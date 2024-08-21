@@ -33,6 +33,11 @@ public class CPTest {
     }
 
     @Test
+    public void testMyTest() {
+        testCP("MyTest");
+    }
+
+    @Test
     public void testAssign() {
         testCP("Assign");
     }

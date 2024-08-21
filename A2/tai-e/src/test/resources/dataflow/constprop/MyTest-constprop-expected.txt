@@ -1,0 +1,38 @@
+-------------------- <MyTest: void <init>()> (constprop) --------------------
+[0@L1] invokespecial %this.<java.lang.Object: void <init>()>(); {}
+[1@L1] temp$0 = 63; {temp$0=63}
+[2@L2] %this.<MyTest: int MAX> = temp$0; {temp$0=63}
+[3@L2] return; {temp$0=63}
+
+-------------------- <MyTest: void foo(int,int,boolean,java.lang.String)> (constprop) --------------------
+[0@L5] %intconst0 = 1; {%intconst0=1, b=NAC, k=NAC, z=NAC}
+[1@L5] k = k + %intconst0; {%intconst0=1, b=NAC, k=NAC, z=NAC}
+[2@L6] temp$2 = new MyTest; {%intconst0=1, b=NAC, k=NAC, z=NAC}
+[3@L6] invokespecial temp$2.<MyTest: void <init>()>(); {%intconst0=1, b=NAC, k=NAC, z=NAC}
+[4@L6] my = temp$2; {%intconst0=1, b=NAC, k=NAC, z=NAC}
+[5@L7] temp$3 = my.<MyTest: int MAX>; {%intconst0=1, b=NAC, k=NAC, temp$3=NAC, z=NAC}
+[6@L7] k = temp$3; {%intconst0=1, b=NAC, k=NAC, temp$3=NAC, z=NAC}
+[7@L8] temp$4 = 7; {%intconst0=1, b=NAC, k=NAC, temp$3=NAC, temp$4=7, z=NAC}
+[8@L8] my.<MyTest: int MAX> = temp$4; {%intconst0=1, b=NAC, k=NAC, temp$3=NAC, temp$4=7, z=NAC}
+[9@L9] pi = 3.14; {%intconst0=1, b=NAC, k=NAC, temp$3=NAC, temp$4=7, z=NAC}
+[10@L10] temp$5 = (int) pi; {%intconst0=1, b=NAC, k=NAC, temp$3=NAC, temp$4=7, temp$5=NAC, z=NAC}
+[11@L10] k = temp$5; {%intconst0=1, b=NAC, k=NAC, temp$3=NAC, temp$4=7, temp$5=NAC, z=NAC}
+[12@L11] temp$7 = (int) pi; {%intconst0=1, b=NAC, k=NAC, temp$3=NAC, temp$4=7, temp$5=NAC, temp$7=NAC, z=NAC}
+[13@L11] temp$6 = 1; {%intconst0=1, b=NAC, k=NAC, temp$3=NAC, temp$4=7, temp$5=NAC, temp$6=1, temp$7=NAC, z=NAC}
+[14@L11] k = temp$6 + temp$7; {%intconst0=1, b=NAC, k=NAC, temp$3=NAC, temp$4=7, temp$5=NAC, temp$6=1, temp$7=NAC, z=NAC}
+[15@L13] %intconst1 = 0; {%intconst0=1, %intconst1=0, b=NAC, k=NAC, temp$3=NAC, temp$4=7, temp$5=NAC, temp$6=1, temp$7=NAC, z=NAC}
+[16@L13] k = k / %intconst1; {%intconst0=1, %intconst1=0, b=NAC, temp$3=NAC, temp$4=7, temp$5=NAC, temp$6=1, temp$7=NAC, z=NAC}
+[17@L14] k = 7; {%intconst0=1, %intconst1=0, b=NAC, k=7, temp$3=NAC, temp$4=7, temp$5=NAC, temp$6=1, temp$7=NAC, z=NAC}
+[18@L15] k = k / %intconst1; {%intconst0=1, %intconst1=0, b=NAC, temp$3=NAC, temp$4=7, temp$5=NAC, temp$6=1, temp$7=NAC, z=NAC}
+[19@L16] z = z + z; {%intconst0=1, %intconst1=0, b=NAC, temp$3=NAC, temp$4=7, temp$5=NAC, temp$6=1, temp$7=NAC, z=NAC}
+[20@L17] z = z + k; {%intconst0=1, %intconst1=0, b=NAC, temp$3=NAC, temp$4=7, temp$5=NAC, temp$6=1, temp$7=NAC, z=NAC}
+[21@L18] z = k + %intconst0; {%intconst0=1, %intconst1=0, b=NAC, temp$3=NAC, temp$4=7, temp$5=NAC, temp$6=1, temp$7=NAC}
+[22@L19] z = 2; {%intconst0=1, %intconst1=0, b=NAC, temp$3=NAC, temp$4=7, temp$5=NAC, temp$6=1, temp$7=NAC, z=2}
+[23@L21] if (b == %intconst1) goto 28; {%intconst0=1, %intconst1=0, b=NAC, temp$3=NAC, temp$4=7, temp$5=NAC, temp$6=1, temp$7=NAC, z=2}
+[24@L21] goto 25; {%intconst0=1, %intconst1=0, b=NAC, temp$3=NAC, temp$4=7, temp$5=NAC, temp$6=1, temp$7=NAC, z=2}
+[25@L21] nop; {%intconst0=1, %intconst1=0, b=NAC, temp$3=NAC, temp$4=7, temp$5=NAC, temp$6=1, temp$7=NAC, z=2}
+[26@L22] k = 1; {%intconst0=1, %intconst1=0, b=NAC, k=1, temp$3=NAC, temp$4=7, temp$5=NAC, temp$6=1, temp$7=NAC, z=2}
+[27@L23] z = 1; {%intconst0=1, %intconst1=0, b=NAC, k=1, temp$3=NAC, temp$4=7, temp$5=NAC, temp$6=1, temp$7=NAC, z=1}
+[28@L23] nop; {%intconst0=1, %intconst1=0, b=NAC, k=1, temp$3=NAC, temp$4=7, temp$5=NAC, temp$6=1, temp$7=NAC, z=NAC}
+[29@L23] return; {%intconst0=1, %intconst1=0, b=NAC, k=1, temp$3=NAC, temp$4=7, temp$5=NAC, temp$6=1, temp$7=NAC, z=NAC}
+
