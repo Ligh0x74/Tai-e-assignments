@@ -45,9 +45,7 @@ import pascal.taie.ir.stmt.If;
 import pascal.taie.ir.stmt.Stmt;
 import pascal.taie.ir.stmt.SwitchStmt;
 
-import java.util.Comparator;
-import java.util.Set;
-import java.util.TreeSet;
+import java.util.*;
 
 public class DeadCodeDetection extends MethodAnalysis {
 
@@ -71,6 +69,67 @@ public class DeadCodeDetection extends MethodAnalysis {
         Set<Stmt> deadCode = new TreeSet<>(Comparator.comparing(Stmt::getIndex));
         // TODO - finish me
         // Your task is to recognize dead code in ir and add it to deadCode
+        // BFS
+        Set<Stmt> vis = new HashSet<>();
+        Queue<Stmt> q = new ArrayDeque<>();
+        q.offer(cfg.getEntry());
+        while (!q.isEmpty()) {
+            var stmt = q.poll();
+            if (vis.contains(stmt)) {
+                continue;
+            }
+            vis.add(stmt);
+            var outEdges = cfg.getOutEdgesOf(stmt);
+            // 不可达代码
+            if (stmt instanceof If s) {
+                var val = ConstantPropagation.evaluate(s.getCondition(), constants.getInFact(s));
+                outEdges.forEach(edge -> {
+                    boolean ok = !val.isConstant();
+                    ok = ok || (val.getConstant() == 1 && edge.getKind() == Edge.Kind.IF_TRUE);
+                    ok = ok || (val.getConstant() == 0 && edge.getKind() == Edge.Kind.IF_FALSE);
+                    if (ok) {
+                        q.offer(edge.getTarget());
+                    }
+                });
+            } else if (stmt instanceof SwitchStmt s) {
+                var val = constants.getInFact(s).get(s.getVar());
+                if (!val.isConstant()) {
+                    outEdges.forEach(edge -> q.offer(edge.getTarget()));
+                    continue;
+                }
+                boolean isDefault = true;
+                for (var edge : outEdges) {
+                    boolean ok = edge.isSwitchCase() && val.getConstant() == edge.getCaseValue();
+                    if (ok) {
+                        isDefault = false;
+                        q.offer(edge.getTarget());
+                        break;
+                    }
+                }
+                if (isDefault) {
+                    q.offer(s.getDefaultTarget());
+                }
+            } else {
+                cfg.getSuccsOf(stmt).forEach(q::offer);
+            }
+            // 无用赋值
+            if(stmt instanceof AssignStmt s) {
+                if (!hasNoSideEffect(s.getRValue())) {
+                    continue;
+                }
+                if (s.getLValue() instanceof Var v && !liveVars.getOutFact(s).contains(v)) {
+                    deadCode.add(s);
+                }
+            }
+        }
+
+        // deadLoop exclude exit node
+        vis.add(cfg.getExit());
+        cfg.forEach(stmt -> {
+            if (!vis.contains(stmt)) {
+                deadCode.add(stmt);
+            }
+        });
         return deadCode;
     }
 
