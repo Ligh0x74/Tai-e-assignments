@@ -31,6 +31,7 @@ import pascal.taie.language.classes.JMethod;
 import pascal.taie.language.classes.Subsignature;
 
 import java.util.ArrayDeque;
+import java.util.HashSet;
 import java.util.Queue;
 import java.util.Set;
 
@@ -49,8 +50,26 @@ class CHABuilder implements CGBuilder<Invoke, JMethod> {
 
     private CallGraph<Invoke, JMethod> buildCallGraph(JMethod entry) {
         DefaultCallGraph callGraph = new DefaultCallGraph();
+        // corner case, entry is null
+        if (entry == null) {
+            return callGraph;
+        }
         callGraph.addEntryMethod(entry);
         // TODO - finish me
+        Queue<JMethod> q = new ArrayDeque<>();
+        q.offer(entry);
+        while (!q.isEmpty()) {
+            var m = q.poll();
+            if (!callGraph.addReachableMethod(m)) {
+                continue;
+            }
+            callGraph.callSitesIn(m).forEach(cs -> {
+                resolve(cs).forEach(t -> {
+                    callGraph.addEdge(new Edge<>(CallGraphs.getCallKind(cs), cs, t));
+                    q.offer(t);
+                });
+            });
+        }
         return callGraph;
     }
 
@@ -59,7 +78,32 @@ class CHABuilder implements CGBuilder<Invoke, JMethod> {
      */
     private Set<JMethod> resolve(Invoke callSite) {
         // TODO - finish me
-        return null;
+        var res = new HashSet<JMethod>();
+        var c = callSite.getMethodRef().getDeclaringClass();
+        var s = callSite.getMethodRef().getSubsignature();
+
+        if (callSite.isStatic()) {
+            res.add(c.getDeclaredMethod(s));
+        } else if (callSite.isSpecial()) {
+            res.add(dispatch(c, s));
+        } else if (callSite.isVirtual() || callSite.isInterface()) {
+            Queue<JClass> q = new ArrayDeque<>();
+            q.offer(c);
+            // 注意 interface 的处理, 包含直接实现和间接实现的情况
+            while (!q.isEmpty()) {
+                c = q.poll();
+                res.add(dispatch(c, s));
+                if (c.isInterface()) {
+                    hierarchy.getDirectSubinterfacesOf(c).forEach(q::offer);
+                    hierarchy.getDirectImplementorsOf(c).forEach(q::offer);
+                } else {
+                    hierarchy.getDirectSubclassesOf(c).forEach(q::offer);
+                }
+            }
+        }
+        // 删除 dispatch 返回值为 null 的情况
+        res.remove(null);
+        return res;
     }
 
     /**
@@ -70,6 +114,14 @@ class CHABuilder implements CGBuilder<Invoke, JMethod> {
      */
     private JMethod dispatch(JClass jclass, Subsignature subsignature) {
         // TODO - finish me
-        return null;
+        if (jclass == null) {
+            return null;
+        }
+        var m = jclass.getDeclaredMethod(subsignature);
+        if (m == null) {
+            return dispatch(jclass.getSuperClass(), subsignature);
+        }
+        // 过滤抽象方法
+        return m.isAbstract() ? null : m;
     }
 }
