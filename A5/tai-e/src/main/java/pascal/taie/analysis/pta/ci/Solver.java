@@ -25,10 +25,7 @@ package pascal.taie.analysis.pta.ci;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import pascal.taie.World;
-import pascal.taie.analysis.graph.callgraph.CallGraphs;
-import pascal.taie.analysis.graph.callgraph.CallKind;
-import pascal.taie.analysis.graph.callgraph.DefaultCallGraph;
-import pascal.taie.analysis.graph.callgraph.Edge;
+import pascal.taie.analysis.graph.callgraph.*;
 import pascal.taie.analysis.pta.core.heap.HeapModel;
 import pascal.taie.analysis.pta.core.heap.Obj;
 import pascal.taie.ir.exp.InvokeExp;
@@ -97,6 +94,11 @@ class Solver {
      */
     private void addReachable(JMethod method) {
         // TODO - finish me
+        if (callGraph.addReachableMethod(method)) {
+            method.getIR().getStmts().forEach(stmt -> {
+                stmt.accept(stmtProcessor);
+            });
+        }
     }
 
     /**
@@ -105,6 +107,70 @@ class Solver {
     private class StmtProcessor implements StmtVisitor<Void> {
         // TODO - if you choose to implement addReachable()
         //  via visitor pattern, then finish me
+        @Override
+        public Void visit(New stmt) {
+            var pointer = pointerFlowGraph.getVarPtr(stmt.getLValue());
+            var obj = new PointsToSet(heapModel.getObj(stmt));
+            workList.addEntry(pointer, obj);
+            return null;
+        }
+
+        @Override
+        public Void visit(Copy stmt) {
+            var x = pointerFlowGraph.getVarPtr(stmt.getLValue());
+            var y = pointerFlowGraph.getVarPtr(stmt.getRValue());
+            addPFGEdge(y, x);
+            return null;
+        }
+
+        @Override
+        public Void visit(LoadField stmt) {
+            if (stmt.getFieldRef().isStatic()) {
+                var x = pointerFlowGraph.getVarPtr(stmt.getLValue());
+                var y = pointerFlowGraph.getStaticField(stmt.getFieldRef().resolve());
+                addPFGEdge(y, x);
+            }
+            return null;
+        }
+
+        @Override
+        public Void visit(StoreField stmt) {
+            if (stmt.getFieldRef().isStatic()) {
+                var x = pointerFlowGraph.getStaticField(stmt.getFieldRef().resolve());
+                var y = pointerFlowGraph.getVarPtr(stmt.getRValue());
+                addPFGEdge(y, x);
+            }
+            return null;
+        }
+
+        @Override
+        public Void visit(Invoke stmt) {
+            if (!stmt.isStatic()) {
+                return null;
+            }
+            var m = resolveCallee(null, stmt);
+            // 在调用图中添加边，以及调用 addReachable 方法
+            callGraph.addEdge(new Edge<>(CallGraphs.getCallKind(stmt), stmt, m));
+            addReachable(m);
+
+            var p = m.getIR().getParams();
+            var a = stmt.getInvokeExp().getArgs();
+            assert p.size() == a.size();
+            for (int i = 0; i < p.size(); i++) {
+                var x = pointerFlowGraph.getVarPtr(p.get(i));
+                var y = pointerFlowGraph.getVarPtr(a.get(i));
+                addPFGEdge(y, x);
+            }
+
+            if (stmt.getLValue() != null) {
+                m.getIR().getReturnVars().forEach(r -> {
+                    var x = pointerFlowGraph.getVarPtr(stmt.getLValue());
+                    var y = pointerFlowGraph.getVarPtr(r);
+                    addPFGEdge(y, x);
+                });
+            }
+            return null;
+        }
     }
 
     /**
@@ -112,6 +178,9 @@ class Solver {
      */
     private void addPFGEdge(Pointer source, Pointer target) {
         // TODO - finish me
+        if (pointerFlowGraph.addEdge(source, target) && !source.getPointsToSet().isEmpty()) {
+            workList.addEntry(target, source.getPointsToSet());
+        }
     }
 
     /**
@@ -119,6 +188,39 @@ class Solver {
      */
     private void analyze() {
         // TODO - finish me
+        while (!workList.isEmpty()) {
+            var entry = workList.pollEntry();
+            var delta = propagate(entry.pointer(), entry.pointsToSet());
+            if (!(entry.pointer() instanceof VarPtr varPtr)) {
+                continue;
+            }
+            var v = varPtr.getVar();
+            delta.forEach(o -> {
+                callGraph.reachableMethods().forEach(m -> {
+                    v.getStoreFields().forEach(s -> {
+                        var x = pointerFlowGraph.getInstanceField(o, s.getFieldRef().resolve());
+                        var y = pointerFlowGraph.getVarPtr(s.getRValue());
+                        addPFGEdge(y, x);
+                    });
+                    v.getLoadFields().forEach(s -> {
+                        var x = pointerFlowGraph.getVarPtr(s.getLValue());
+                        var y = pointerFlowGraph.getInstanceField(o, s.getFieldRef().resolve());
+                        addPFGEdge(y, x);
+                    });
+                    v.getStoreArrays().forEach(s -> {
+                        var x = pointerFlowGraph.getArrayIndex(o);
+                        var y = pointerFlowGraph.getVarPtr(s.getRValue());
+                        addPFGEdge(y, x);
+                    });
+                    v.getLoadArrays().forEach(s -> {
+                        var x = pointerFlowGraph.getVarPtr(s.getLValue());
+                        var y = pointerFlowGraph.getArrayIndex(o);
+                        addPFGEdge(y, x);
+                    });
+                });
+                processCall(v, o);
+            });
+        }
     }
 
     /**
@@ -127,7 +229,20 @@ class Solver {
      */
     private PointsToSet propagate(Pointer pointer, PointsToSet pointsToSet) {
         // TODO - finish me
-        return null;
+        var delta = new PointsToSet();
+        pointsToSet.forEach(obj -> {
+            if (pointer.getPointsToSet().addObject(obj)) {
+                delta.addObject(obj);
+            }
+        });
+
+        if (pointsToSet.isEmpty()) {
+            return delta;
+        }
+        pointerFlowGraph.getSuccsOf(pointer).forEach(s -> {
+            workList.addEntry(s, delta);
+        });
+        return delta;
     }
 
     /**
@@ -138,6 +253,32 @@ class Solver {
      */
     private void processCall(Var var, Obj recv) {
         // TODO - finish me
+        for (var invoke : var.getInvokes()) {
+            if (invoke.isStatic()) {
+                continue;
+            }
+            var m = resolveCallee(recv, invoke);
+            workList.addEntry(pointerFlowGraph.getVarPtr(m.getIR().getThis()), new PointsToSet(recv));
+            if (callGraph.addEdge(new Edge<>(CallGraphs.getCallKind(invoke), invoke, m))) {
+                addReachable(m);
+                var p = m.getIR().getParams();
+                var a = invoke.getInvokeExp().getArgs();
+                assert p.size() == a.size();
+                for (int i = 0; i < p.size(); i++) {
+                    var x = pointerFlowGraph.getVarPtr(p.get(i));
+                    var y = pointerFlowGraph.getVarPtr(a.get(i));
+                    addPFGEdge(y, x);
+                }
+
+                if (invoke.getLValue() != null) {
+                    m.getIR().getReturnVars().forEach(r -> {
+                        var x = pointerFlowGraph.getVarPtr(invoke.getLValue());
+                        var y = pointerFlowGraph.getVarPtr(r);
+                        addPFGEdge(y, x);
+                    });
+                }
+            }
+        }
     }
 
     /**
