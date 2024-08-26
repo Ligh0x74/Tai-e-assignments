@@ -196,27 +196,25 @@ class Solver {
             }
             var v = varPtr.getVar();
             delta.forEach(o -> {
-                callGraph.reachableMethods().forEach(m -> {
-                    v.getStoreFields().forEach(s -> {
-                        var x = pointerFlowGraph.getInstanceField(o, s.getFieldRef().resolve());
-                        var y = pointerFlowGraph.getVarPtr(s.getRValue());
-                        addPFGEdge(y, x);
-                    });
-                    v.getLoadFields().forEach(s -> {
-                        var x = pointerFlowGraph.getVarPtr(s.getLValue());
-                        var y = pointerFlowGraph.getInstanceField(o, s.getFieldRef().resolve());
-                        addPFGEdge(y, x);
-                    });
-                    v.getStoreArrays().forEach(s -> {
-                        var x = pointerFlowGraph.getArrayIndex(o);
-                        var y = pointerFlowGraph.getVarPtr(s.getRValue());
-                        addPFGEdge(y, x);
-                    });
-                    v.getLoadArrays().forEach(s -> {
-                        var x = pointerFlowGraph.getVarPtr(s.getLValue());
-                        var y = pointerFlowGraph.getArrayIndex(o);
-                        addPFGEdge(y, x);
-                    });
+                v.getStoreFields().forEach(s -> {
+                    var x = pointerFlowGraph.getInstanceField(o, s.getFieldRef().resolve());
+                    var y = pointerFlowGraph.getVarPtr(s.getRValue());
+                    addPFGEdge(y, x);
+                });
+                v.getLoadFields().forEach(s -> {
+                    var x = pointerFlowGraph.getVarPtr(s.getLValue());
+                    var y = pointerFlowGraph.getInstanceField(o, s.getFieldRef().resolve());
+                    addPFGEdge(y, x);
+                });
+                v.getStoreArrays().forEach(s -> {
+                    var x = pointerFlowGraph.getArrayIndex(o);
+                    var y = pointerFlowGraph.getVarPtr(s.getRValue());
+                    addPFGEdge(y, x);
+                });
+                v.getLoadArrays().forEach(s -> {
+                    var x = pointerFlowGraph.getVarPtr(s.getLValue());
+                    var y = pointerFlowGraph.getArrayIndex(o);
+                    addPFGEdge(y, x);
                 });
                 processCall(v, o);
             });
