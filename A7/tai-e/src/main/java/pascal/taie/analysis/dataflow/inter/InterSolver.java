@@ -70,16 +70,18 @@ class InterSolver<Method, Node, Fact> {
             var node = icfg.getEntryOf(m);
             result.setOutFact(node, analysis.newBoundaryFact(node));
         });
-        for (var node : icfg) {
-            if (result.getOutFact(node) != null) {
-                continue;
+        icfg.forEach(node -> {
+            result.setInFact(node, analysis.newInitialFact());
+            if (result.getOutFact(node) == null) {
+                result.setOutFact(node, analysis.newInitialFact());
             }
-            result.setOutFact(node, analysis.newInitialFact());
-        }
+        });
     }
 
     private void doSolve() {
         // TODO - finish me
+        // TODO - WorkList 算法需要修改，因为 Store 语句不会修改 OUT，如果 Load 先于 Store 处理，可能会产生错误的结果
+        // TODO - 解决方案，在处理完一个/所有 Store 语句之后，手动将相关的 Load 语句加入队列
 //        Queue<Node> q = new ArrayDeque<>();
 //        icfg.forEach(q::offer);
 //        while (!q.isEmpty()) {

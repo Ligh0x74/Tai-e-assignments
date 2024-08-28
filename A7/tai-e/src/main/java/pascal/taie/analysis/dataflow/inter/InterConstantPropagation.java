@@ -50,9 +50,9 @@ public class InterConstantPropagation extends
 
     private final ConstantPropagation cp;
 
-    private Map<JField, List<StoreField>> jFieldToStoreFieldsMap;
+    private Map<JField, Set<StoreField>> jFieldToStoreFieldsMap;
 
-    private Map<Var, List<Var>> varToVarsMap;
+    private Map<Var, Set<Var>> varAliasMap;
 
     public InterConstantPropagation(AnalysisConfig config) {
         super(config);
@@ -64,28 +64,25 @@ public class InterConstantPropagation extends
         String ptaId = getOptions().getString("pta");
         PointerAnalysisResult pta = World.get().getResult(ptaId);
         // You can do initialization work here
+        // 添加静态字段的 JField 到对应 Store 语句的映射，限制为 int 类型
         jFieldToStoreFieldsMap = new HashMap<>();
-        varToVarsMap = new HashMap<>();
-        // 获取所有的静态 store 语句，限制为 int 类型，设置 JField 到对应 store 语句的映射
         icfg.forEach(stmt -> {
             if (stmt instanceof StoreField storeField && storeField.isStatic() && ConstantPropagation.canHoldInt(storeField.getRValue())) {
-                // TODO - can use JField as id or not?
-                var jField = storeField.getFieldRef().resolve();
-                jFieldToStoreFieldsMap.computeIfAbsent(jField, k -> new ArrayList<>()).add(storeField);
+                var jField = storeField.getFieldAccess().getFieldRef().resolve();
+                jFieldToStoreFieldsMap.computeIfAbsent(jField, k -> new HashSet<>()).add(storeField);
             }
         });
-        // 计算别名信息
+        // 添加变量到对应 pts 存在交集的变量的映射
+        varAliasMap = new HashMap<>();
         pta.getVars().forEach(v1 -> {
-            var pts1 = pta.getPointsToSet(v1);
-            if (pts1.isEmpty()) {
-                varToVarsMap.computeIfAbsent(v1, k -> new ArrayList<>()).add(v1);
+            if (pta.getPointsToSet(v1).isEmpty()) {
+                varAliasMap.computeIfAbsent(v1, k -> new HashSet<>()).add(v1);
                 return;
             }
             pta.getVars().forEach(v2 -> {
-                var pts2 = pta.getPointsToSet(v2);
-                for (var o : pts2) {
-                    if (pts1.contains(o)) {
-                        varToVarsMap.computeIfAbsent(v1, k -> new ArrayList<>()).add(v2);
+                for (var obj : pta.getPointsToSet(v2)) {
+                    if (pta.getPointsToSet(v1).contains(obj)) {
+                        varAliasMap.computeIfAbsent(v1, k -> new HashSet<>()).add(v2);
                         break;
                     }
                 }
@@ -124,83 +121,88 @@ public class InterConstantPropagation extends
     @Override
     protected boolean transferNonCallNode(Stmt stmt, CPFact in, CPFact out) {
         // TODO - finish me
-        // 处理 load 语句，限制为 int 类型
+        // 处理 Load 语句，限定为 int 类型
         if (stmt instanceof LoadField loadField && ConstantPropagation.canHoldInt(loadField.getLValue())) {
-            // 静态字段
             if (loadField.isStatic()) {
-                var jField = loadField.getFieldRef().resolve();
-                var meetResult = Value.getUndef();
-                if (!jFieldToStoreFieldsMap.containsKey(jField)) {
-                    in = in.copy();
-                    in.update(loadField.getLValue(), meetResult);
-                    return out.copyFrom(in);
-                }
-                for (var storeField : jFieldToStoreFieldsMap.get(jField)) {
-                    var storeFieldInFact = solver.getInFact(storeField);
-                    if (storeFieldInFact == null) {
-                        continue;
-                    }
-                    meetResult = cp.meetValue(meetResult, storeFieldInFact.get(storeField.getRValue()));
-                }
-                in = in.copy();
-                in.update(loadField.getLValue(), meetResult);
-                return out.copyFrom(in);
+                return transforStaticLoadFieleNodeLimitInt(loadField, in, out);
             }
-            // 实例字段
-            // 如何获取 loadField 中 x.f 的 x？InstanceFieldAccess！
-            var instanceFieldAccess = (InstanceFieldAccess) loadField.getFieldAccess();
-            var v = instanceFieldAccess.getBase();
-            var meetResult = Value.getUndef();
-            // null check
-            if (!varToVarsMap.containsKey(v)) {
-//                in = in.copy();
-//                in.update(loadField.getLValue(), Value.getNAC());
-                return out.copyFrom(in);
-            }
-            for (var alias : varToVarsMap.get(v)) {
-                for (var storeField : alias.getStoreFields()) {
-                    var storeFieldInFact = solver.getInFact(storeField);
-                    if (storeFieldInFact == null) {
-                        continue;
-                    }
-                    meetResult = cp.meetValue(meetResult, storeFieldInFact.get(storeField.getRValue()));
-                }
-            }
-            in = in.copy();
-            in.update(loadField.getLValue(), meetResult);
-            return out.copyFrom(in);
+            return transforInstanceLoadFieldNodeLimitInt(loadField, in, out);
         }
         if (stmt instanceof LoadArray loadArray && ConstantPropagation.canHoldInt(loadArray.getLValue())) {
-            var base = loadArray.getArrayAccess().getBase();
-            var index = in.get(loadArray.getArrayAccess().getIndex());
-            var meetResult = Value.getUndef();
-            // null check
-            if (!varToVarsMap.containsKey(base)) {
-//                in = in.copy();
-//                in.update(loadArray.getLValue(), Value.getNAC());
-                return out.copyFrom(in);
-            }
-            for (var mayAlias : varToVarsMap.get(base)) {
-                for (var storeArray : mayAlias.getStoreArrays()) {
-                    var storeArrayInFact = solver.getInFact(storeArray);
-                    if (storeArrayInFact == null) {
-                        continue;
-                    }
-                    var storeArrayIndex = storeArrayInFact.get(storeArray.getArrayAccess().getIndex());
-                    if (index.isUndef() || storeArrayIndex.isUndef() || (index.isConstant()
-                            && storeArrayIndex.isConstant()
-                            && index.getConstant() != storeArrayIndex.getConstant()
-                    )) {
-                        continue;
-                    }
-                    meetResult = cp.meetValue(meetResult, storeArrayInFact.get(storeArray.getRValue()));
-                }
-            }
-            in = in.copy();
-            in.update(loadArray.getLValue(), meetResult);
-            return out.copyFrom(in);
+            return transforLoadArrayNodeLimitInt(loadArray, in, out);
         }
         return cp.transferNode(stmt, in, out);
+    }
+
+    private boolean transforStaticLoadFieleNodeLimitInt(LoadField loadField, CPFact in, CPFact out) {
+        var jField = loadField.getFieldRef().resolve();
+        var meetResult = Value.getUndef();
+        // TODO - 断言 jFild 在 jFieldToStoreFieldsMap 中
+        assert jFieldToStoreFieldsMap.containsKey(jField);
+        for (var storeField : jFieldToStoreFieldsMap.get(jField)) {
+            var storeFieldInFact = solver.getInFact(storeField);
+            assert storeFieldInFact != null;
+            meetResult = cp.meetValue(meetResult, storeFieldInFact.get(storeField.getRValue()));
+        }
+        in = in.copy();
+        in.update(loadField.getLValue(), meetResult);
+        return out.copyFrom(in);
+    }
+
+    private boolean transforInstanceLoadFieldNodeLimitInt(LoadField loadField, CPFact in, CPFact out) {
+        assert loadField.getFieldAccess() instanceof InstanceFieldAccess;
+        var base = ((InstanceFieldAccess) loadField.getFieldAccess()).getBase();
+        var jField = loadField.getFieldRef().resolve();
+        var meetResult = Value.getUndef();
+        // TODO - 变量不在 PFG 中，如何处理？LoadField 的 Base 没有指向任何对象，说明无法处理 Base 的 Assign 语句，
+        //  为了保证 Sound，应该将变量设置为 NAC？为什么不设置 NAC，而是直接返回。
+        if (!varAliasMap.containsKey(base)) {
+//            in = in.copy();
+//            in.update(loadField.getLValue(), Value.getNAC());
+            return out.copyFrom(in);
+        }
+        for (var alias : varAliasMap.get(base)) {
+            for (var storeField : alias.getStoreFields()) {
+                var storeFieldInFact = solver.getInFact(storeField);
+                assert storeFieldInFact != null;
+                // TODO - 我是傻逼，忘记判断字段是否相同，Bug 找好久才找到！
+                if (!jField.equals(storeField.getFieldRef().resolve())) {
+                    continue;
+                }
+                meetResult = cp.meetValue(meetResult, storeFieldInFact.get(storeField.getRValue()));
+            }
+        }
+        in = in.copy();
+        in.update(loadField.getLValue(), meetResult);
+        return out.copyFrom(in);
+    }
+
+    private boolean transforLoadArrayNodeLimitInt(LoadArray loadArray, CPFact in, CPFact out) {
+        var base = loadArray.getArrayAccess().getBase();
+        var index = in.get(loadArray.getArrayAccess().getIndex());
+        var meetResult = Value.getUndef();
+        // TODO - 变量不在 PFG 中，如何处理？LoadField 的 Base 没有指向任何对象，说明无法处理 Base 的 Assign 语句，
+        //  为了保证 Sound，应该将变量设置为 NAC？为什么不设置 NAC，而是直接返回。
+        if (!varAliasMap.containsKey(base)) {
+//            in = in.copy();
+//            in.update(loadArray.getLValue(), Value.getNAC());
+            return out.copyFrom(in);
+        }
+        for (var alias : varAliasMap.get(base)) {
+            for (var storeArray : alias.getStoreArrays()) {
+                var storeFieldInFact = solver.getInFact(storeArray);
+                assert storeFieldInFact != null;
+                // 比较索引
+                var storeIndex = storeFieldInFact.get(storeArray.getArrayAccess().getIndex());
+                if (index.isUndef() || storeIndex.isUndef() || (index.isConstant() && storeIndex.isConstant() && index.getConstant() != storeIndex.getConstant())) {
+                    continue;
+                }
+                meetResult = cp.meetValue(meetResult, storeFieldInFact.get(storeArray.getRValue()));
+            }
+        }
+        in = in.copy();
+        in.update(loadArray.getLValue(), meetResult);
+        return out.copyFrom(in);
     }
 
     @Override
