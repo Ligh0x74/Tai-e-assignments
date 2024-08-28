@@ -40,6 +40,11 @@ public class InterCPAliasTest {
     }
 
     @Test
+    public void testMyTest() {
+        test("MyTest");
+    }
+
+    @Test
     public void testArray() {
         test("Array");
     }
