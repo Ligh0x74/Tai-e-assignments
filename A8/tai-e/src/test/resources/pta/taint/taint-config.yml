@@ -1,12 +1,15 @@
 sources:
   - { method: "<SourceSink: java.lang.String source()>", type: "java.lang.String" }
   - { method: "<SourceSink: java.lang.String sourceAndSink(java.lang.String,java.lang.String)>", type: "java.lang.String" }
+  - { method: "<A: A source()>", type: "A" }
 
 sinks:
   - { method: "<SourceSink: void sink(java.lang.String)>", index: 0 }
   - { method: "<SourceSink: void sink(java.lang.String,int)>", index: 0 }
   - { method: "<SourceSink: void sink(java.lang.String,java.lang.String)>", index: 1 }
   - { method: "<SourceSink: java.lang.String sourceAndSink(java.lang.String,java.lang.String)>", index: 0 }
+  - { method: "<A: void sink(int)>", index: 0 }
+  - { method: "<A: void sink(A)>", index: 0 }
 
 transfers:
   - { method: "<java.lang.String: java.lang.String concat(java.lang.String)>", from: base, to: result, type: "java.lang.String" }
@@ -19,3 +22,5 @@ transfers:
   - { method: "<java.lang.StringBuilder: java.lang.StringBuilder append(java.lang.String)>", from: 0, to: base, type: "java.lang.StringBuilder" }
   - { method: "<java.lang.StringBuilder: java.lang.StringBuilder append(java.lang.Object)>", from: 0, to: base, type: "java.lang.StringBuilder" }
   - { method: "<java.lang.StringBuilder: java.lang.String toString()>", from: base, to: result, type: "java.lang.String" }
+  - { method: "<A: int baseToResult()>", from: base, to: result, type: "int" }
+  - { method: "<A: void argToBase(A)>", from: 0, to: base, type: "A" }
